@@ -1149,6 +1149,8 @@ ggplot(species_pathways, aes(x = bin, y = Name, fill = Pathway)) +
 ```
 
 #### Suplemental figures 1 and 2
+```{r}
+
 df1 <- Timeseries1
 df1 <- df1[which(df1$Treatment == 'oil' | df1$Treatment=="medium"| df1$Treatment=="unfiltered"| df1$Treatment=="medium_without_e"| df1$Treatment=="control"),]
 df2 <- Timeseries2
@@ -1276,8 +1278,12 @@ control_comparisons2 <- control_comparisons2 %>%
     x = "Day"
   ))
 
+```
+
 
 ####Species Richness
+
+```{r}
 
 # Load and clean data
 Abundance <- read_excel("C:/Users/fevaaa/OneDrive - Linnéuniversitetet/Dokument/Siljan/Manuscript2/Data Manuscript 2.xlsx", sheet= 'Samples')
@@ -1357,3 +1363,6 @@ library(car)
 leveneTest(Observed ~ Treatment, data = richness_all)
 
 kruskal.test(Observed ~ Treatment, data = richness_all)
+
+```
+
