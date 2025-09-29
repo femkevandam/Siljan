@@ -1147,3 +1147,213 @@ ggplot(species_pathways, aes(x = bin, y = Name, fill = Pathway)) +
 ``` r
 #ggsave('MetaTgenes.png', width=20, height= 37, units = 'cm')
 ```
+
+#### Suplemental figures 1 and 2
+df1 <- Timeseries1
+df1 <- df1[which(df1$Treatment == 'oil' | df1$Treatment=="medium"| df1$Treatment=="unfiltered"| df1$Treatment=="medium_without_e"| df1$Treatment=="control"),]
+df2 <- Timeseries2
+df2 <- df2[which(df2$Treatment == 'oil' | df2$Treatment=="medium"| df2$Treatment=="methanol"| df2$Treatment=="acetate"| df2$Treatment=="yeast"| df2$Treatment=="casein"| df2$Treatment=="control o"| df2$Treatment=="control y"| df2$Treatment=="control c"| df2$Treatment=="control m"| df2$Treatment=="control a"| df2$Treatment=="control"),]
+
+high_oil_reps <- c("c", "d")  
+low_oil_reps  <- c("a", "b")  
+
+df1_split <- df1 %>%
+  mutate(
+    Treatment = case_when(
+      Treatment == "oil" & Replicate %in% high_oil_reps ~ "oil_high",
+      Treatment == "oil" & Replicate %in% low_oil_reps  ~ "oil_low",
+      TRUE ~ Treatment
+    )
+  )
+
+# Random intercept for each replicate
+model_split <- lmer(total_ppm ~ Treatment * day_factor + (1 | Replicate), data = df1_split)
+
+# Calculate estimated marginal means for Treatment at each day
+emm_time <- emmeans(model_split, ~ Treatment | day_factor)
+
+# Pairwise comparisons between treatments within each day
+pairs_time <- pairs(emm_time, adjust = "tukey")
+
+pairs_split <- emmeans(model_split, ~ Treatment | day_factor)
+control_contrasts <- contrast(pairs_split, method = "trt.vs.ctrl", ref = "control")
+summary(control_contrasts, adjust = "tukey")
+pairs_time
+
+pairs_df <- as.data.frame(pairs_time)
+
+control_comparisons <- as.data.frame(pairs_time) %>%
+  filter(!is.na(estimate)) %>% 
+  filter(grepl("control", contrast)) %>% 
+  arrange(day_factor) 
+
+control_comparisons <- control_comparisons %>%
+  mutate(
+    # Identify which one is the non-control treatment
+    Treatment = ifelse(grepl("^control", contrast),
+                       sub("control - ", "", contrast),
+                       sub(" - control$", "", contrast)),
+    # Make sure the estimate is always Treatment minus control
+    estimate = ifelse(grepl("^control", contrast), -estimate, estimate),
+    # Add significance flag
+    significant = p.value < 0.05
+  ) %>%
+  select(day_factor, Treatment, estimate, SE, p.value, significant)
+
+#create figure
+(SuppFigure1 <- ggplot(control_comparisons, 
+                   aes(x = as.numeric(as.character(day_factor)),
+                       y = estimate, color = Treatment)) +
+    geom_point() +
+    geom_line() +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    geom_errorbar(aes(ymin = estimate - SE, ymax = estimate + SE), width = 3) +
+    geom_text(
+      data = subset(control_comparisons, significant),
+      aes(label = "*"), 
+      vjust = -0.8,  # adjust vertical position
+      color = "black",
+      size = 6
+    ) +
+    facet_wrap(~ Treatment, scales = "free_y") +
+    theme_minimal() +
+    labs(
+      title = "Difference from control over time",
+      y = "Treatment - Control methane (ppm)",
+      x = "Day"
+    ))
+
+model2 <- lmer(total_ppm ~ Treatment * day_factor + (1 | Replicate), data = df2)
+emm_time2 <- emmeans(model2, ~ Treatment | day_factor)
+
+# Pairwise comparisons between treatments within each day
+pairs_time2 <- pairs(emm_time2, adjust = "tukey")
+
+pairs_df2 <- as.data.frame(pairs_time2)
+
+# Remove rows with non-estimable results (nonEst)
+pairs_clean2 <- pairs_df2 %>%
+  filter(!is.na(estimate))  # nonEst rows have NA estimates
+
+control_comparisons2 <- as.data.frame(pairs_time2) %>%
+  filter(!is.na(estimate)) %>%   # remove nonEst
+  filter(grepl("control", contrast)) %>%  # only contrasts with control
+  arrange(day_factor)  # sort by day
+
+control_comparisons2 <- control_comparisons2 %>%
+  mutate(
+    # Identify which one is the non-control treatment
+    Treatment = ifelse(grepl("^control", contrast),
+                       sub("control - ", "", contrast),
+                       sub(" - control$", "", contrast)),
+    # Make sure the estimate is always Treatment minus control
+    estimate = ifelse(grepl("^control", contrast), -estimate, estimate),
+    # Add significance flag
+    significant = p.value < 0.05
+  ) %>%
+  select(day_factor, Treatment, estimate, SE, p.value, significant)
+
+#Create figure 2
+(SuppFig2 <- ggplot(control_comparisons2, 
+                   aes(x = as.numeric(as.character(day_factor)),
+                       y = estimate, color = Treatment)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_errorbar(aes(ymin = estimate - SE, ymax = estimate + SE), width = 3) +
+  geom_text(
+    data = subset(control_comparisons2, significant),
+    aes(label = "*"), 
+    vjust = -0.4,  # adjust vertical position
+    color = "black",
+    size = 6
+  ) +
+  facet_wrap(~ Treatment, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "Difference from control over time",
+    y = "Treatment - Control methane (ppm)",
+    x = "Day"
+  ))
+
+
+####Species Richness
+
+# Load and clean data
+Abundance <- read_excel("C:/Users/fevaaa/OneDrive - Linnéuniversitetet/Dokument/Siljan/Manuscript2/Data Manuscript 2.xlsx", sheet= 'Samples')
+Abundance <- Abundance[c(2:13)]
+colnames(Abundance) <- c('Genome','Media_a','Media_b','Media_d',
+                         'Oil_b','Oil_c','Oil2_b',
+                         'Methanol_a','Methanol_c','Methanol_d',
+                         'Total','Classification')
+
+# Filter rows where Total > 0.1
+Abundance <- Abundance %>% filter(Total > 0.1)
+
+# Create treatment-specific data frames (drop Genome)
+media_data <- Abundance %>% select(Media_a, Media_b, Media_d)
+oil_data <- Abundance %>% select(Oil_b, Oil_c, Oil2_b)
+methanol_data <- Abundance %>% select(Methanol_a, Methanol_c, Methanol_d)
+
+# Transpose so rows = samples, columns = taxa
+media_t <- as.data.frame(t(media_data))
+oil_t <- as.data.frame(t(oil_data))
+methanol_t <- as.data.frame(t(methanol_data))
+
+media_t <- round(media_t)
+oil_t <- round(oil_t)
+methanol_t <- round(methanol_t)
+
+# Calculate richness for each treatment
+media_richness <- data.frame(
+  Treatment = "Media",
+  Sample = rownames(media_t),
+  Observed = specnumber(media_t),
+  Chao1 = estimateR(media_t)[2, ]
+)
+
+oil_richness <- data.frame(
+  Treatment = "Oil",
+  Sample = rownames(oil_t),
+  Observed = specnumber(oil_t),
+  Chao1 = estimateR(oil_t)[2, ]
+)
+
+methanol_richness <- data.frame(
+  Treatment = "Methanol",
+  Sample = rownames(methanol_t),
+  Observed = specnumber(methanol_t),
+  Chao1 = estimateR(methanol_t)[2, ]
+)
+
+# Combine results
+richness_all <- bind_rows(media_richness, oil_richness, methanol_richness)
+
+# View the results
+print(richness_all)
+
+library(ggplot2)
+
+ggplot(richness_all, aes(x = Treatment, y = Observed)) +
+  geom_boxplot(fill = "lightblue") +
+  geom_jitter(width = 0.2, size = 3) +
+  labs(title = "Observed Species Richness by Treatment",
+       y = "Observed Richness",
+       x = "") +
+  theme_minimal()
+
+ggplot(richness_all, aes(x = Treatment, y = Chao1)) +
+  geom_boxplot(fill = "lightgreen") +
+  geom_jitter(width = 0.2, size = 3) +
+  labs(title = "Chao1 Estimated Richness by Treatment",
+       y = "Chao1 Richness",
+       x = "") +
+  theme_minimal()
+
+# Test normality within each treatment for Observed richness
+by(richness_all$Observed, richness_all$Treatment, shapiro.test)
+# Test variance across groups
+library(car)
+leveneTest(Observed ~ Treatment, data = richness_all)
+
+kruskal.test(Observed ~ Treatment, data = richness_all)
